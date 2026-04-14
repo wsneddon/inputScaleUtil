@@ -409,6 +409,10 @@ function calcScaler() {
     <div class="result-box highlight">
       <div class="val">${ma.toFixed(3)}</div>
       <div class="unit">mA</div>
+    </div>
+    <div class="result-box" id="s_pct_custom_span">
+      <div class="val">—</div>
+      <div class="unit">% of custom span</div>
     </div>`;
 
   if (span > 0) {
@@ -417,12 +421,16 @@ function calcScaler() {
     const pctSpan    = valInSpanU / span * 100;
     const spanInTxU  = convertPressure(span, spanUnit, txUnit);
     const maAtSpan   = 4 + (spanInTxU - lo) / (hi - lo) * 16;
+
+    // populate the inline result box
+    const inlineBox = document.getElementById('s_pct_custom_span');
+    if (inlineBox) {
+      inlineBox.className = 'result-box highlight';
+      inlineBox.innerHTML = `<div class="val">${pctSpan.toFixed(1)}%</div><div class="unit">% of custom span</div>`;
+    }
+
     document.getElementById('s_span_results').innerHTML =
-      `<div class="result-box highlight">
-        <div class="val">${pctSpan.toFixed(1)}%</div>
-        <div class="unit">% of custom span</div>
-      </div>
-      <div class="result-box">
+      `<div class="result-box">
         <div class="val">${fmt(valInSpanU)}</div>
         <div class="unit">${unitLabels[spanUnit]} (current)</div>
       </div>
