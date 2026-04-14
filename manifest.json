@@ -1,0 +1,9 @@
+{
+  "name": "4-20mA Scaler",
+  "short_name": "mA Scaler",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1c1c1e",
+  "theme_color": "#0a84ff",
+  "icons": []
+}

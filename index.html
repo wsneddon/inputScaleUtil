@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>4-20mA Scaler</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1c1c1e;
+      color: #f2f2f7;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #0a84ff;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .tabs {
+      display: flex;
+      background: #2c2c2e;
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: #8e8e93;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: #0a84ff;
+      color: white;
+      font-weight: 600;
+    }
+
+    .card {
+      background: #2c2c2e;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8e8e93;
+      margin-bottom: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    label {
+      font-size: 0.85rem;
+      color: #aeaeb2;
+      min-width: 80px;
+    }
+
+    input, select {
+      flex: 1;
+      background: #3a3a3c;
+      border: 1px solid #48484a;
+      border-radius: 8px;
+      color: #f2f2f7;
+      font-size: 1rem;
+      padding: 8px 10px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input:focus, select:focus {
+      border-color: #0a84ff;
+    }
+
+    .unit-select {
+      flex: 0 0 110px;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .result-box {
+      background: #3a3a3c;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .result-box .val {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #30d158;
+    }
+
+    .result-box .unit {
+      font-size: 0.75rem;
+      color: #8e8e93;
+      margin-top: 2px;
+    }
+
+    .result-box.highlight .val {
+      color: #0a84ff;
+    }
+
+    .slider-row {
+      margin-top: 12px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #0a84ff;
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #8e8e93;
+      margin-top: 4px;
+    }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .conversion-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .conversion-table td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #3a3a3c;
+    }
+
+    .conversion-table td:first-child { color: #8e8e93; }
+    .conversion-table td:last-child { text-align: right; font-weight: 600; color: #30d158; }
+  </style>
+</head>
+<body>
+
+<h1>4-20 mA Scaler</h1>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('scaler')">Scaler</div>
+  <div class="tab" onclick="showTab('reverse')">Reverse</div>
+  <div class="tab" onclick="showTab('convert')">Convert</div>
+</div>
+
+<!-- ── SCALER: mA → value ── -->
+<div id="scaler" class="section active">
+
+  <div class="card">
+    <h2>Transmitter Range</h2>
+    <div class="row">
+      <label>4 mA =</label>
+      <input type="number" id="s_lo" value="0" oninput="calcScaler()">
+      <select id="s_unit" class="unit-select" onchange="calcScaler()">
+        <option value="psi">PSI</option>
+        <option value="ftWC">ft WC</option>
+        <option value="inWC">in WC</option>
+        <option value="kPa">kPa</option>
+        <option value="bar">bar</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>20 mA =</label>
+      <input type="number" id="s_hi" value="25" oninput="calcScaler()">
+      <span style="min-width:110px;font-size:0.85rem;color:#8e8e93;padding-left:10px" id="s_unit_label">PSI</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Input Signal</h2>
+    <div class="row">
+      <input type="number" id="s_input" value="12" step="0.01" oninput="calcScaler()">
+      <select id="s_input_type" class="unit-select" onchange="calcScaler()">
+        <option value="ma">mA</option>
+        <option value="pct">%</option>
+        <option value="psi">PSI</option>
+        <option value="ftWC">ft WC</option>
+        <option value="inWC">in WC</option>
+        <option value="kPa">kPa</option>
+        <option value="bar">bar</option>
+      </select>
+    </div>
+    <div class="slider-row">
+      <input type="range" id="s_slider" min="0" max="100" step="0.1" value="50" oninput="syncInputFromSlider();calcScaler()">
+      <div class="slider-labels"><span>0%</span><span>50%</span><span>100%</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Results</h2>
+    <div class="result-grid" id="s_results"></div>
+  </div>
+
+  <div class="card">
+    <h2>Custom 100% Span</h2>
+    <div class="row">
+      <label>100% =</label>
+      <input type="number" id="s_span" value="39" oninput="calcScaler()">
+      <select id="s_span_unit" class="unit-select" onchange="calcScaler()">
+        <option value="psi">PSI</option>
+        <option value="ftWC" selected>ft WC</option>
+        <option value="inWC">in WC</option>
+        <option value="kPa">kPa</option>
+        <option value="bar">bar</option>
+      </select>
+    </div>
+    <div class="result-grid" id="s_span_results"></div>
+  </div>
+
+</div>
+
+<!-- ── REVERSE: value/% → mA ── -->
+<div id="reverse" class="section">
+
+  <div class="card">
+    <h2>Transmitter Range</h2>
+    <div class="row">
+      <label>4 mA =</label>
+      <input type="number" id="r_lo" value="0" oninput="calcReverse()">
+      <select id="r_unit" class="unit-select" onchange="calcReverse()">
+        <option value="psi">PSI</option>
+        <option value="ftWC">ft WC</option>
+        <option value="inWC">in WC</option>
+        <option value="kPa">kPa</option>
+        <option value="bar">bar</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>20 mA =</label>
+      <input type="number" id="r_hi" value="25" oninput="calcReverse()">
+      <span style="min-width:110px;font-size:0.85rem;color:#8e8e93;padding-left:10px" id="r_unit_label">PSI</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Enter Known Value</h2>
+    <div class="row">
+      <label id="r_val_label">PSI</label>
+      <input type="number" id="r_val" value="12.5" oninput="calcReverse()">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>— or % —</label>
+      <input type="number" id="r_pct" value="50" min="0" max="100" oninput="calcReverseFromPct()">
+      <span style="min-width:110px;font-size:0.85rem;color:#8e8e93;padding-left:10px">%</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Results</h2>
+    <div class="result-grid" id="r_results"></div>
+  </div>
+
+</div>
+
+<!-- ── CONVERT: unit conversion ── -->
+<div id="convert" class="section">
+
+  <div class="card">
+    <h2>Pressure Unit Converter</h2>
+    <div class="row">
+      <input type="number" id="c_val" value="25" oninput="calcConvert()">
+      <select id="c_unit" class="unit-select" onchange="calcConvert()">
+        <option value="psi">PSI</option>
+        <option value="ftWC">ft WC</option>
+        <option value="inWC">in WC</option>
+        <option value="kPa">kPa</option>
+        <option value="bar">bar</option>
+        <option value="inHg">in Hg</option>
+        <option value="mmHg">mm Hg</option>
+        <option value="atm">atm</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Equivalents</h2>
+    <table class="conversion-table" id="c_table"></table>
+  </div>
+
+</div>
+
+<script>
+const toPSI = {
+  psi:  1,
+  ftWC: 0.43353,
+  inWC: 0.036127,
+  kPa:  0.14504,
+  bar:  14.5038,
+  inHg: 0.49116,
+  mmHg: 0.019337,
+  atm:  14.6959,
+};
+
+const unitLabels = {
+  psi:  'PSI',
+  ftWC: 'ft WC',
+  inWC: 'in WC',
+  kPa:  'kPa',
+  bar:  'bar',
+  inHg: 'in Hg',
+  mmHg: 'mm Hg',
+  atm:  'atm',
+};
+
+function convertPressure(val, fromUnit, toUnit) {
+  return val * toPSI[fromUnit] / toPSI[toUnit];
+}
+
+function fmt(n) {
+  if (Math.abs(n) >= 1000) return n.toFixed(1);
+  if (Math.abs(n) >= 100)  return n.toFixed(2);
+  return n.toFixed(3);
+}
+
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function syncInputFromSlider() {
+  const pct    = parseFloat(document.getElementById('s_slider').value);
+  const type   = document.getElementById('s_input_type').value;
+  const lo     = parseFloat(document.getElementById('s_lo').value) || 0;
+  const hi     = parseFloat(document.getElementById('s_hi').value) || 0;
+  const txUnit = document.getElementById('s_unit').value;
+  let displayVal;
+  if (type === 'ma')       displayVal = 4 + pct / 100 * 16;
+  else if (type === 'pct') displayVal = pct;
+  else {
+    const valInTx = lo + (hi - lo) * pct / 100;
+    displayVal = convertPressure(valInTx, txUnit, type);
+  }
+  document.getElementById('s_input').value = parseFloat(displayVal.toFixed(4));
+}
+
+function calcScaler() {
+  const lo     = parseFloat(document.getElementById('s_lo').value) || 0;
+  const hi     = parseFloat(document.getElementById('s_hi').value) || 0;
+  const input  = parseFloat(document.getElementById('s_input').value) || 0;
+  const type   = document.getElementById('s_input_type').value;
+  const txUnit = document.getElementById('s_unit').value;
+  const span   = parseFloat(document.getElementById('s_span').value) || 0;
+
+  document.getElementById('s_unit_label').textContent = unitLabels[txUnit];
+
+  let pct;
+  if (type === 'ma')       pct = (input - 4) / 16 * 100;
+  else if (type === 'pct') pct = input;
+  else {
+    const valInTx = convertPressure(input, type, txUnit);
+    pct = (valInTx - lo) / (hi - lo) * 100;
+  }
+
+  const ma    = 4 + pct / 100 * 16;
+  const valTx = lo + (hi - lo) * pct / 100;
+
+  document.getElementById('s_slider').value = Math.min(100, Math.max(0, pct));
+
+  const results = ['psi','ftWC','inWC','kPa','bar'].map(u => ({
+    u, v: convertPressure(valTx, txUnit, u)
+  }));
+
+  document.getElementById('s_results').innerHTML =
+    results.map(r =>
+      `<div class="result-box${r.u === txUnit ? ' highlight' : ''}">
+        <div class="val">${fmt(r.v)}</div>
+        <div class="unit">${unitLabels[r.u]}</div>
+      </div>`
+    ).join('') +
+    `<div class="result-box highlight">
+      <div class="val">${pct.toFixed(1)}%</div>
+      <div class="unit">% of span</div>
+    </div>
+    <div class="result-box highlight">
+      <div class="val">${ma.toFixed(3)}</div>
+      <div class="unit">mA</div>
+    </div>`;
+
+  if (span > 0) {
+    const spanUnit   = document.getElementById('s_span_unit').value;
+    const valInSpanU = convertPressure(valTx, txUnit, spanUnit);
+    const pctSpan    = valInSpanU / span * 100;
+    const spanInTxU  = convertPressure(span, spanUnit, txUnit);
+    const maAtSpan   = 4 + (spanInTxU - lo) / (hi - lo) * 16;
+    document.getElementById('s_span_results').innerHTML =
+      `<div class="result-box highlight">
+        <div class="val">${pctSpan.toFixed(1)}%</div>
+        <div class="unit">% of custom span</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${fmt(valInSpanU)}</div>
+        <div class="unit">${unitLabels[spanUnit]} (current)</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${maAtSpan.toFixed(3)}</div>
+        <div class="unit">mA at 100% span</div>
+      </div>`;
+  }
+}
+
+function calcReverse() {
+  const lo   = parseFloat(document.getElementById('r_lo').value) || 0;
+  const hi   = parseFloat(document.getElementById('r_hi').value) || 0;
+  const val  = parseFloat(document.getElementById('r_val').value) || 0;
+  const unit = document.getElementById('r_unit').value;
+
+  document.getElementById('r_unit_label').textContent = unitLabels[unit];
+  document.getElementById('r_val_label').textContent  = unitLabels[unit];
+
+  const pct = (val - lo) / (hi - lo) * 100;
+  const ma  = 4 + (val - lo) / (hi - lo) * 16;
+
+  document.getElementById('r_pct').value = pct.toFixed(2);
+  document.getElementById('r_results').innerHTML =
+    `<div class="result-box highlight">
+      <div class="val">${ma.toFixed(3)}</div>
+      <div class="unit">mA</div>
+    </div>
+    <div class="result-box">
+      <div class="val">${pct.toFixed(2)}%</div>
+      <div class="unit">% of span</div>
+    </div>`;
+}
+
+function calcReverseFromPct() {
+  const lo  = parseFloat(document.getElementById('r_lo').value) || 0;
+  const hi  = parseFloat(document.getElementById('r_hi').value) || 0;
+  const pct = parseFloat(document.getElementById('r_pct').value) || 0;
+  document.getElementById('r_val').value = fmt(lo + (hi - lo) * pct / 100);
+  calcReverse();
+}
+
+function calcConvert() {
+  const val  = parseFloat(document.getElementById('c_val').value) || 0;
+  const unit = document.getElementById('c_unit').value;
+  document.getElementById('c_table').innerHTML =
+    Object.keys(toPSI).filter(u => u !== unit).map(u =>
+      `<tr><td>${unitLabels[u]}</td><td>${fmt(convertPressure(val, unit, u))}</td></tr>`
+    ).join('');
+}
+
+calcScaler();
+calcReverse();
+calcConvert();
+</script>
+</body>
+</html>
