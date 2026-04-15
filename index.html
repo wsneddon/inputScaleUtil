@@ -96,7 +96,30 @@
     }
 
     .unit-select {
-      flex: 0 0 110px;
+      flex: 0 0 90px;
+      min-width: 0;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    input, select {
+      flex: 1;
+      min-width: 0;
+      background: #3a3a3c;
+      border: 1px solid #48484a;
+      border-radius: 8px;
+      color: #f2f2f7;
+      font-size: 1rem;
+      padding: 8px 10px;
+      outline: none;
+      -webkit-appearance: none;
     }
 
     .result-grid {
@@ -482,9 +505,11 @@ function calcConvert() {
     ).join('');
 }
 
-calcScaler();
-calcReverse();
-calcConvert();
+document.addEventListener('DOMContentLoaded', function() {
+  calcScaler();
+  calcReverse();
+  calcConvert();
+});
 </script>
 </body>
 </html>
