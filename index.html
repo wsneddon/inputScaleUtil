@@ -294,9 +294,24 @@ function calcWetBulb(dbC, dpC, pressKPa) {
 
 function toggleHumidityMode() {
   const label = document.getElementById('h_input_label');
-  const currentMode = label.textContent.includes('Wet Bulb') ? 'wb' : 'dp';
-  const newMode = currentMode === 'wb' ? 'dp' : 'wb';
-  label.textContent = newMode === 'wb' ? 'Wet Bulb ⇄' : 'Dewpoint ⇄';
+  const tempLabel = document.getElementById('h_temp_label');
+  const currentMode = label.dataset.mode || 'wb';
+  let newMode;
+  if (currentMode === 'wb') newMode = 'dp';
+  else if (currentMode === 'dp') newMode = 'rh';
+  else newMode = 'wb';
+  
+  if (newMode === 'wb') {
+    label.textContent = 'Wet Bulb ⇄';
+    tempLabel.textContent = document.getElementById('h_temp_unit').value === 'f' ? '°F' : '°C';
+  } else if (newMode === 'dp') {
+    label.textContent = 'Dewpoint ⇄';
+    tempLabel.textContent = document.getElementById('h_temp_unit').value === 'f' ? '°F' : '°C';
+  } else {
+    label.textContent = 'RH% ⇄';
+    tempLabel.textContent = '%';
+  }
+  
   label.dataset.mode = newMode;
   calcHumidity();
 }
@@ -310,11 +325,9 @@ function calcHumidity() {
   const tempUnit = document.getElementById('h_temp_unit').value;
   const pressUnit = document.getElementById('h_press_unit').value;
 
-  document.getElementById('h_temp_label').textContent = tempUnit === 'f' ? '°F' : '°C';
-
   // Convert to C and kPa
   const dbC = tempUnit === 'f' ? (db - 32) * 5/9 : db;
-  const inputC = tempUnit === 'f' ? (input - 32) * 5/9 : input;
+  let inputC = mode === 'rh' ? input : (tempUnit === 'f' ? (input - 32) * 5/9 : input);
   let pressKPa = press;
   if (pressUnit === 'inhg') pressKPa = press * 3.38639;
   else if (pressUnit === 'mbar') pressKPa = press * 0.1;
@@ -331,7 +344,7 @@ function calcHumidity() {
     }
     rh = calcRH(dbC, wbC, pressKPa);
     dpC = calcDewpoint(dbC, rh);
-  } else {
+  } else if (mode === 'dp') {
     // Dewpoint mode
     dpC = inputC;
     if (dpC > dbC) {
@@ -343,24 +356,68 @@ function calcHumidity() {
     const es_dp = satVaporPressure(dpC);
     rh = (es_dp / es_db) * 100;
     wbC = calcWetBulb(dbC, dpC, pressKPa);
+  } else {
+    // RH mode
+    rh = input;
+    if (rh < 0 || rh > 100) {
+      document.getElementById('h_results').innerHTML =
+        '<div style="grid-column:1/-1;color:#ff453a;text-align:center">RH must be between 0-100%</div>';
+      return;
+    }
+    dpC = calcDewpoint(dbC, rh);
+    wbC = calcWetBulb(dbC, dpC, pressKPa);
   }
 
   const dpF = dpC * 9/5 + 32;
   const wbF = wbC * 9/5 + 32;
 
-  document.getElementById('h_results').innerHTML =
-    `<div class="result-box highlight">
-      <div class="val">${rh.toFixed(1)}</div>
-      <div class="unit">% RH</div>
-    </div>
-    <div class="result-box">
-      <div class="val">${mode === 'wb' ? dpF.toFixed(1) : wbF.toFixed(1)}</div>
-      <div class="unit">${mode === 'wb' ? 'Dewpoint °F' : 'Wet Bulb °F'}</div>
-    </div>
-    <div class="result-box">
-      <div class="val">${mode === 'wb' ? dpC.toFixed(1) : wbC.toFixed(1)}</div>
-      <div class="unit">${mode === 'wb' ? 'Dewpoint °C' : 'Wet Bulb °C'}</div>
-    </div>`;
+  if (mode === 'wb') {
+    document.getElementById('h_results').innerHTML =
+      `<div class="result-box highlight">
+        <div class="val">${rh.toFixed(1)}</div>
+        <div class="unit">% RH</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${dpF.toFixed(1)}</div>
+        <div class="unit">Dewpoint °F</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${dpC.toFixed(1)}</div>
+        <div class="unit">Dewpoint °C</div>
+      </div>`;
+  } else if (mode === 'dp') {
+    document.getElementById('h_results').innerHTML =
+      `<div class="result-box highlight">
+        <div class="val">${rh.toFixed(1)}</div>
+        <div class="unit">% RH</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${wbF.toFixed(1)}</div>
+        <div class="unit">Wet Bulb °F</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${wbC.toFixed(1)}</div>
+        <div class="unit">Wet Bulb °C</div>
+      </div>`;
+  } else {
+    document.getElementById('h_results').innerHTML =
+      `<div class="result-box">
+        <div class="val">${dpF.toFixed(1)}</div>
+        <div class="unit">Dewpoint °F</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${dpC.toFixed(1)}</div>
+        <div class="unit">Dewpoint °C</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${wbF.toFixed(1)}</div>
+        <div class="unit">Wet Bulb °F</div>
+      </div>
+      <div class="result-box">
+        <div class="val">${wbC.toFixed(1)}</div>
+        <div class="unit">Wet Bulb °C</div>
+      </div>`;
+  }
 }
 
 // ── Pipe sizes: [label, ID inches] ───────────────────────────────────────
