@@ -306,12 +306,18 @@ function convertHumidityTemp() {
   const dbInput = document.getElementById('h_db');
   const input = document.getElementById('h_input');
   
+  // Track previous unit in dataset
+  const prevUnit = dbInput.dataset.prevUnit || 'f';
+  
+  // Only convert if unit actually changed
+  if (prevUnit === tempUnit) {
+    calcHumidity();
+    return;
+  }
+  
   // Get current values
   let db = parseFloat(dbInput.value) || 0;
   let val = parseFloat(input.value) || 0;
-  
-  // Convert based on unit change
-  const prevUnit = tempUnit === 'f' ? 'c' : 'f';
   
   if (tempUnit === 'f') {
     // Converting C to F
@@ -326,6 +332,9 @@ function convertHumidityTemp() {
       input.value = ((val - 32) * 5/9).toFixed(1);
     }
   }
+  
+  // Store current unit for next change
+  dbInput.dataset.prevUnit = tempUnit;
   
   calcHumidity();
 }
