@@ -192,6 +192,13 @@
   <div class="card">
     <h2>Psychrometric Calculator</h2>
     <div class="row">
+      <label>Input Mode</label>
+      <select id="h_mode" class="unit-select" style="flex:1" onchange="toggleHumidityMode()">
+        <option value="wb">Wet Bulb</option>
+        <option value="dp">Dewpoint</option>
+      </select>
+    </div>
+    <div class="row">
       <label>Dry Bulb</label>
       <input type="number" id="h_db" value="75" step="0.1" oninput="calcHumidity()">
       <select id="h_temp_unit" class="unit-select" onchange="calcHumidity()">
@@ -200,8 +207,8 @@
       </select>
     </div>
     <div class="row">
-      <label>Wet Bulb</label>
-      <input type="number" id="h_wb" value="65" step="0.1" oninput="calcHumidity()">
+      <label id="h_input_label">Wet Bulb</label>
+      <input type="number" id="h_input" value="65" step="0.1" oninput="calcHumidity()">
       <span style="min-width:100px;font-size:0.85rem;color:#8e8e93;padding-left:10px" id="h_temp_label">°F</span>
     </div>
     <div class="row">
@@ -277,9 +284,31 @@ function calcDewpoint(dbC, rh) {
   return (243.04 * ln_e) / (17.625 - ln_e);
 }
 
+function calcWetBulb(dbC, dpC, pressKPa) {
+  // Iterative approximation: start with dewpoint, converge to wet bulb
+  let wb = dpC;
+  for (let i = 0; i < 20; i++) {
+    const es_wb = satVaporPressure(wb);
+    const es_db = satVaporPressure(dbC);
+    const es_dp = satVaporPressure(dpC);
+    const e = es_dp;
+    const wb_calc = dbC - (es_db - e) / (pressKPa * 0.00066 * (1 + 0.00115 * wb));
+    if (Math.abs(wb_calc - wb) < 0.01) break;
+    wb = wb_calc;
+  }
+  return wb;
+}
+
+function toggleHumidityMode() {
+  const mode = document.getElementById('h_mode').value;
+  document.getElementById('h_input_label').textContent = mode === 'wb' ? 'Wet Bulb' : 'Dewpoint';
+  calcHumidity();
+}
+
 function calcHumidity() {
+  const mode = document.getElementById('h_mode').value;
   let db = parseFloat(document.getElementById('h_db').value) || 0;
-  let wb = parseFloat(document.getElementById('h_wb').value) || 0;
+  let input = parseFloat(document.getElementById('h_input').value) || 0;
   let press = parseFloat(document.getElementById('h_press').value) || 29.92;
   const tempUnit = document.getElementById('h_temp_unit').value;
   const pressUnit = document.getElementById('h_press_unit').value;
@@ -288,20 +317,39 @@ function calcHumidity() {
 
   // Convert to C and kPa
   const dbC = tempUnit === 'f' ? (db - 32) * 5/9 : db;
-  const wbC = tempUnit === 'f' ? (wb - 32) * 5/9 : wb;
+  const inputC = tempUnit === 'f' ? (input - 32) * 5/9 : input;
   let pressKPa = press;
   if (pressUnit === 'inhg') pressKPa = press * 3.38639;
   else if (pressUnit === 'mbar') pressKPa = press * 0.1;
 
-  if (wbC > dbC) {
-    document.getElementById('h_results').innerHTML =
-      '<div style="grid-column:1/-1;color:#ff453a;text-align:center">Wet bulb cannot exceed dry bulb</div>';
-    return;
+  let rh, dpC, wbC;
+
+  if (mode === 'wb') {
+    // Wet bulb mode
+    wbC = inputC;
+    if (wbC > dbC) {
+      document.getElementById('h_results').innerHTML =
+        '<div style="grid-column:1/-1;color:#ff453a;text-align:center">Wet bulb cannot exceed dry bulb</div>';
+      return;
+    }
+    rh = calcRH(dbC, wbC, pressKPa);
+    dpC = calcDewpoint(dbC, rh);
+  } else {
+    // Dewpoint mode
+    dpC = inputC;
+    if (dpC > dbC) {
+      document.getElementById('h_results').innerHTML =
+        '<div style="grid-column:1/-1;color:#ff453a;text-align:center">Dewpoint cannot exceed dry bulb</div>';
+      return;
+    }
+    const es_db = satVaporPressure(dbC);
+    const es_dp = satVaporPressure(dpC);
+    rh = (es_dp / es_db) * 100;
+    wbC = calcWetBulb(dbC, dpC, pressKPa);
   }
 
-  const rh = calcRH(dbC, wbC, pressKPa);
-  const dpC = calcDewpoint(dbC, rh);
   const dpF = dpC * 9/5 + 32;
+  const wbF = wbC * 9/5 + 32;
 
   document.getElementById('h_results').innerHTML =
     `<div class="result-box highlight">
@@ -309,12 +357,12 @@ function calcHumidity() {
       <div class="unit">% RH</div>
     </div>
     <div class="result-box">
-      <div class="val">${dpF.toFixed(1)}</div>
-      <div class="unit">Dewpoint °F</div>
+      <div class="val">${mode === 'wb' ? dpF.toFixed(1) : wbF.toFixed(1)}</div>
+      <div class="unit">${mode === 'wb' ? 'Dewpoint °F' : 'Wet Bulb °F'}</div>
     </div>
     <div class="result-box">
-      <div class="val">${dpC.toFixed(1)}</div>
-      <div class="unit">Dewpoint °C</div>
+      <div class="val">${mode === 'wb' ? dpC.toFixed(1) : wbC.toFixed(1)}</div>
+      <div class="unit">${mode === 'wb' ? 'Dewpoint °C' : 'Wet Bulb °C'}</div>
     </div>`;
 }
 
