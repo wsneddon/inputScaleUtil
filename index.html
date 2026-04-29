@@ -70,6 +70,7 @@
   <select id="meas_type" onchange="onTypeChange()">
     <option value="pressure">Pressure</option>
     <option value="flow">Flow</option>
+    <option value="humidity">Humidity</option>
   </select>
 </div>
 
@@ -186,6 +187,39 @@
   </div>
 </div>
 
+<!-- ── HUMIDITY: Psychrometric calculations ── -->
+<div id="humidity" class="section">
+  <div class="card">
+    <h2>Psychrometric Calculator</h2>
+    <div class="row">
+      <label>Dry Bulb</label>
+      <input type="number" id="h_db" value="75" step="0.1" oninput="calcHumidity()">
+      <select id="h_temp_unit" class="unit-select" onchange="calcHumidity()">
+        <option value="f">°F</option>
+        <option value="c">°C</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Wet Bulb</label>
+      <input type="number" id="h_wb" value="65" step="0.1" oninput="calcHumidity()">
+      <span style="min-width:100px;font-size:0.85rem;color:#8e8e93;padding-left:10px" id="h_temp_label">°F</span>
+    </div>
+    <div class="row">
+      <label>Pressure</label>
+      <input type="number" id="h_press" value="29.92" step="0.01" oninput="calcHumidity()">
+      <select id="h_press_unit" class="unit-select" onchange="calcHumidity()">
+        <option value="inhg">inHg</option>
+        <option value="kpa">kPa</option>
+        <option value="mbar">mbar</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Results</h2>
+    <div class="result-grid" id="h_results"></div>
+  </div>
+</div>
+
 <script>
 // ── Pressure ──────────────────────────────────────────────────────────────
 const toPSI = {
@@ -221,6 +255,68 @@ const flowLabels = {
 };
 const flowRangeUnits = ['lps','lpm','m3h','gpm','gps','cfm','scfm'];
 const flowAllUnits   = ['lps','lpm','m3h','m3s','gpm','gps','cfm','cfs','scfm','mgd'];
+
+// ── Humidity ──────────────────────────────────────────────────────────────
+// Psychrometric calculations
+function satVaporPressure(tC) {
+  // Magnus formula: es in kPa
+  return 0.61094 * Math.exp((17.625 * tC) / (tC + 243.04));
+}
+
+function calcRH(dbC, wbC, pressKPa) {
+  const es_wb = satVaporPressure(wbC);
+  const es_db = satVaporPressure(dbC);
+  const e = es_wb - pressKPa * (dbC - wbC) * 0.00066 * (1 + 0.00115 * wbC);
+  return Math.max(0, Math.min(100, (e / es_db) * 100));
+}
+
+function calcDewpoint(dbC, rh) {
+  const es_db = satVaporPressure(dbC);
+  const e = (rh / 100) * es_db;
+  const ln_e = Math.log(e / 0.61094);
+  return (243.04 * ln_e) / (17.625 - ln_e);
+}
+
+function calcHumidity() {
+  let db = parseFloat(document.getElementById('h_db').value) || 0;
+  let wb = parseFloat(document.getElementById('h_wb').value) || 0;
+  let press = parseFloat(document.getElementById('h_press').value) || 29.92;
+  const tempUnit = document.getElementById('h_temp_unit').value;
+  const pressUnit = document.getElementById('h_press_unit').value;
+
+  document.getElementById('h_temp_label').textContent = tempUnit === 'f' ? '°F' : '°C';
+
+  // Convert to C and kPa
+  const dbC = tempUnit === 'f' ? (db - 32) * 5/9 : db;
+  const wbC = tempUnit === 'f' ? (wb - 32) * 5/9 : wb;
+  let pressKPa = press;
+  if (pressUnit === 'inhg') pressKPa = press * 3.38639;
+  else if (pressUnit === 'mbar') pressKPa = press * 0.1;
+
+  if (wbC > dbC) {
+    document.getElementById('h_results').innerHTML =
+      '<div style="grid-column:1/-1;color:#ff453a;text-align:center">Wet bulb cannot exceed dry bulb</div>';
+    return;
+  }
+
+  const rh = calcRH(dbC, wbC, pressKPa);
+  const dpC = calcDewpoint(dbC, rh);
+  const dpF = dpC * 9/5 + 32;
+
+  document.getElementById('h_results').innerHTML =
+    `<div class="result-box highlight">
+      <div class="val">${rh.toFixed(1)}</div>
+      <div class="unit">% RH</div>
+    </div>
+    <div class="result-box">
+      <div class="val">${dpF.toFixed(1)}</div>
+      <div class="unit">Dewpoint °F</div>
+    </div>
+    <div class="result-box">
+      <div class="val">${dpC.toFixed(1)}</div>
+      <div class="unit">Dewpoint °C</div>
+    </div>`;
+}
 
 // ── Pipe sizes: [label, ID inches] ───────────────────────────────────────
 const PIPE_SIZES = [
@@ -276,7 +372,26 @@ function populatePipeSizes() {
 
 // ── Type change ───────────────────────────────────────────────────────────
 function onTypeChange() {
-  const isFlow = activeType() === 'flow';
+  const type = activeType();
+  const isFlow = type === 'flow';
+  const isHumidity = type === 'humidity';
+
+  // Hide/show tabs based on type
+  document.querySelectorAll('.tab').forEach(t => {
+    const tabName = t.textContent.toLowerCase();
+    if (isHumidity) {
+      t.style.display = tabName === 'humidity' ? '' : 'none';
+    } else {
+      t.style.display = tabName === 'humidity' ? 'none' : '';
+    }
+  });
+
+  if (isHumidity) {
+    showTab('humidity');
+    calcHumidity();
+    return;
+  }
+
   const { rangeUnits, allUnits, labels } = units();
 
   // Re-populate all unit selects
@@ -310,7 +425,7 @@ function showTab(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  event.target.classList.add('active');
+  if (event && event.target) event.target.classList.add('active');
 }
 
 // ── Scaler ────────────────────────────────────────────────────────────────
