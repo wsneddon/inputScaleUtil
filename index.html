@@ -282,17 +282,42 @@ function calcDewpoint(dbC, rh) {
 }
 
 function calcWetBulb(dbC, dpC, pressKPa) {
-  // Iterative approximation: start with dewpoint, converge to wet bulb
-  let wb = dpC;
-  for (let i = 0; i < 20; i++) {
+  // Better iterative method using psychrometric equation
+  const es_dp = satVaporPressure(dpC);
+  let wb = dpC; // Start with dewpoint as initial guess
+  
+  for (let i = 0; i < 50; i++) {
     const es_wb = satVaporPressure(wb);
     const es_db = satVaporPressure(dbC);
-    const es_dp = satVaporPressure(dpC);
-    const e = es_dp;
-    const wb_calc = dbC - (es_db - e) / (pressKPa * 0.00066 * (1 + 0.00115 * wb));
-    if (Math.abs(wb_calc - wb) < 0.01) break;
-    wb = wb_calc;
+    
+    // Psychrometric equation: e = es_wb - A * P * (T_db - T_wb)
+    // where A = 0.00066 * (1 + 0.00115 * T_wb)
+    const A = 0.00066 * (1 + 0.00115 * wb);
+    const e_calc = es_wb - A * pressKPa * (dbC - wb);
+    
+    // We want e_calc to equal es_dp
+    const error = e_calc - es_dp;
+    
+    if (Math.abs(error) < 0.001) break;
+    
+    // Adjust wet bulb based on error
+    // Derivative approximation for Newton's method
+    const delta = 0.01;
+    const es_wb_delta = satVaporPressure(wb + delta);
+    const A_delta = 0.00066 * (1 + 0.00115 * (wb + delta));
+    const e_calc_delta = es_wb_delta - A_delta * pressKPa * (dbC - wb - delta);
+    const derivative = (e_calc_delta - e_calc) / delta;
+    
+    if (Math.abs(derivative) > 0.001) {
+      wb = wb - error / derivative;
+    } else {
+      wb = wb - error * 0.1; // Fallback to simple adjustment
+    }
+    
+    // Keep wet bulb between dewpoint and dry bulb
+    wb = Math.max(dpC, Math.min(dbC, wb));
   }
+  
   return wb;
 }
 
