@@ -194,7 +194,7 @@
     <div class="row">
       <label>Dry Bulb</label>
       <input type="number" id="h_db" value="75" step="0.1" oninput="calcHumidity()">
-      <select id="h_temp_unit" class="unit-select" onchange="calcHumidity()">
+      <select id="h_temp_unit" class="unit-select" onchange="convertHumidityTemp()">
         <option value="f">°F</option>
         <option value="c">°C</option>
       </select>
@@ -297,6 +297,36 @@ function calcWetBulb(dbC, dpC, pressKPa) {
 }
 
 function toggleHumidityMode() {
+  calcHumidity();
+}
+
+function convertHumidityTemp() {
+  const mode = document.getElementById('h_mode').value;
+  const tempUnit = document.getElementById('h_temp_unit').value;
+  const dbInput = document.getElementById('h_db');
+  const input = document.getElementById('h_input');
+  
+  // Get current values
+  let db = parseFloat(dbInput.value) || 0;
+  let val = parseFloat(input.value) || 0;
+  
+  // Convert based on unit change
+  const prevUnit = tempUnit === 'f' ? 'c' : 'f';
+  
+  if (tempUnit === 'f') {
+    // Converting C to F
+    dbInput.value = (db * 9/5 + 32).toFixed(1);
+    if (mode !== 'rh') {
+      input.value = (val * 9/5 + 32).toFixed(1);
+    }
+  } else {
+    // Converting F to C
+    dbInput.value = ((db - 32) * 5/9).toFixed(1);
+    if (mode !== 'rh') {
+      input.value = ((val - 32) * 5/9).toFixed(1);
+    }
+  }
+  
   calcHumidity();
 }
 
