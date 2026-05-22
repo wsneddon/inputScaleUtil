@@ -71,6 +71,7 @@
     <option value="pressure">Pressure</option>
     <option value="flow">Flow</option>
     <option value="humidity">Humidity</option>
+    <option value="pid">PID Tuning</option>
   </select>
 </div>
 
@@ -78,6 +79,7 @@
   <div class="tab active" onclick="showTab('scaler')">Scaler</div>
   <div class="tab" onclick="showTab('reverse')">Reverse</div>
   <div class="tab" onclick="showTab('convert')">Convert</div>
+  <div class="tab" style="display:none" onclick="showTab('pid')">PID Tuning</div>
 </div>
 
 <!-- ── SCALER: mA → value ── -->
@@ -184,6 +186,42 @@
   <div class="card">
     <h2>Equivalents</h2>
     <table class="conversion-table" id="c_table"></table>
+  </div>
+</div>
+
+<!-- ── PID: Tuning parameter conversion ── -->
+<div id="pid" class="section">
+  <div class="card">
+    <h2>Convert From</h2>
+    <div class="row">
+      <select id="pid_dir" style="flex:1" onchange="calcPID(true)">
+        <option value="coupled">Coupled (ISA) — Per Minute</option>
+        <option value="independent">Independent (Parallel) — Per Second</option>
+      </select>
+    </div>
+  </div>
+  <div class="card" id="pid_input_card">
+    <h2 id="pid_input_title">Coupled (ISA) Input</h2>
+    <div class="row">
+      <label id="pid_l1">Kc</label>
+      <input type="number" id="pid_p1" value="8" step="0.1" oninput="calcPID(false)">
+    </div>
+    <div class="row">
+      <label id="pid_l2">τᵢ (min)</label>
+      <input type="number" id="pid_p2" value="4.44" step="0.01" oninput="calcPID(false)">
+    </div>
+    <div class="row">
+      <label id="pid_l3">τ_d (min)</label>
+      <input type="number" id="pid_p3" value="0.0625" step="0.001" oninput="calcPID(false)">
+    </div>
+  </div>
+  <div class="card">
+    <h2 id="pid_output_title">Independent (Parallel) — Per Second</h2>
+    <div class="result-grid" id="pid_results"></div>
+  </div>
+  <div class="card">
+    <h2>Interpretation</h2>
+    <div class="result-grid" id="pid_interp"></div>
   </div>
 </div>
 
@@ -524,16 +562,25 @@ function onTypeChange() {
   const type = activeType();
   const isFlow = type === 'flow';
   const isHumidity = type === 'humidity';
+  const isPID = type === 'pid';
 
   // Hide/show tabs based on type
   document.querySelectorAll('.tab').forEach(t => {
     const tabName = t.textContent.toLowerCase();
     if (isHumidity) {
       t.style.display = tabName === 'humidity' ? '' : 'none';
+    } else if (isPID) {
+      t.style.display = tabName === 'pid tuning' ? '' : 'none';
     } else {
-      t.style.display = tabName === 'humidity' ? 'none' : '';
+      t.style.display = (tabName === 'humidity' || tabName === 'pid tuning') ? 'none' : '';
     }
   });
+
+  if (isPID) {
+    showTab('pid');
+    calcPID(false);
+    return;
+  }
 
   if (isHumidity) {
     showTab('humidity');
@@ -717,6 +764,74 @@ function calcConvert() {
     allUnits.filter(u => u !== unit).map(u =>
       `<tr><td>${labels[u]}</td><td>${fmt(convertUnits(val, unit, u))}</td></tr>`
     ).join('');
+}
+
+// ── PID Tuning Conversion ─────────────────────────────────────────────────
+function calcPID(swapped) {
+  const dir = document.getElementById('pid_dir').value;
+  const v1 = parseFloat(document.getElementById('pid_p1').value) || 0;
+  const v2 = parseFloat(document.getElementById('pid_p2').value) || 0;
+  const v3 = parseFloat(document.getElementById('pid_p3').value) || 0;
+
+  let kp, ki, kd, kc, ti, td;
+
+  if (dir === 'coupled') {
+    document.getElementById('pid_input_title').textContent = 'Coupled (ISA) Input';
+    document.getElementById('pid_output_title').textContent = 'Independent (Parallel) — Per Second';
+    document.getElementById('pid_l1').textContent = 'Kc';
+    document.getElementById('pid_l2').textContent = 'τᵢ (min)';
+    document.getElementById('pid_l3').textContent = 'τ_d (min)';
+    if (swapped) {
+      kp = v1; ki = v2; kd = v3;
+      kc = kp;
+      ti = (ki > 0) ? kp / ki / 60 : 0;
+      td = (kp > 0) ? kd / kp / 60 : 0;
+      document.getElementById('pid_p1').value = kc.toFixed(2);
+      document.getElementById('pid_p2').value = ti.toFixed(3);
+      document.getElementById('pid_p3').value = td.toFixed(4);
+      return calcPID(false);
+    }
+    kc = v1; ti = v2; td = v3;
+    kp = kc;
+    ki = (ti > 0) ? kc / ti / 60 : 0;
+    kd = kc * td * 60;
+    document.getElementById('pid_results').innerHTML =
+      `<div class="result-box highlight"><div class="val">${kp.toFixed(2)}</div><div class="unit">Kp</div></div>
+       <div class="result-box highlight"><div class="val">${ki.toFixed(4)}</div><div class="unit">Ki (resets/sec)</div></div>
+       <div class="result-box highlight"><div class="val">${kd.toFixed(2)}</div><div class="unit">Kd (sec)</div></div>`;
+  } else {
+    document.getElementById('pid_input_title').textContent = 'Independent (Parallel) Input';
+    document.getElementById('pid_output_title').textContent = 'Coupled (ISA) — Per Minute';
+    document.getElementById('pid_l1').textContent = 'Kp';
+    document.getElementById('pid_l2').textContent = 'Ki (resets/sec)';
+    document.getElementById('pid_l3').textContent = 'Kd (sec)';
+    if (swapped) {
+      kc = v1; ti = v2; td = v3;
+      kp = kc;
+      ki = (ti > 0) ? kc / ti / 60 : 0;
+      kd = kc * td * 60;
+      document.getElementById('pid_p1').value = kp.toFixed(2);
+      document.getElementById('pid_p2').value = ki.toFixed(4);
+      document.getElementById('pid_p3').value = kd.toFixed(2);
+      return calcPID(false);
+    }
+    kp = v1; ki = v2; kd = v3;
+    kc = kp;
+    ti = (ki > 0) ? kp / ki / 60 : 0;
+    td = (kp > 0) ? kd / kp / 60 : 0;
+    document.getElementById('pid_results').innerHTML =
+      `<div class="result-box highlight"><div class="val">${kc.toFixed(2)}</div><div class="unit">Kc</div></div>
+       <div class="result-box highlight"><div class="val">${ti.toFixed(3)}</div><div class="unit">τᵢ (min/repeat)</div></div>
+       <div class="result-box highlight"><div class="val">${td.toFixed(4)}</div><div class="unit">τ_d (min)</div></div>`;
+  }
+
+  const rpmRate = ki * 60;
+  const tdSec = td * 60;
+  document.getElementById('pid_interp').innerHTML =
+    `<div class="result-box"><div class="val">${kp.toFixed(1)}%</div><div class="unit">Output per 1° error</div></div>
+     <div class="result-box"><div class="val">${rpmRate.toFixed(2)}</div><div class="unit">Repeats/min</div></div>
+     <div class="result-box"><div class="val">${tdSec.toFixed(2)} s</div><div class="unit">Derivative horizon</div></div>
+     <div class="result-box"><div class="val">${(rpmRate * kp).toFixed(1)}%/min</div><div class="unit">I accum at 1° error</div></div>`;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
