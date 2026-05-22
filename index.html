@@ -44,6 +44,12 @@
     }
     input:focus, select:focus { border-color: #0a84ff; }
     .unit-select { flex: 0 0 100px; }
+    #pid label { min-width: 100px; font-size: 0.75rem; }
+    #pid .unit-select { flex: 0 0 115px; font-size: 0.8rem; }
+    .pid-icon { flex: 0 0 40px; font-size: 1rem; text-align: center; white-space: nowrap; line-height: 1; }
+    #pid input[type=number] { -moz-appearance: textfield; }
+    #pid input[type=number]::-webkit-inner-spin-button,
+    #pid input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .result-box { background: #3a3a3c; border-radius: 10px; padding: 12px; text-align: center; }
     .result-box .val { font-size: 1.4rem; font-weight: 700; color: #30d158; }
@@ -205,15 +211,27 @@
     <div class="row">
       <label id="pid_l1">Kc</label>
       <input type="number" id="pid_p1" value="8" step="0.1" oninput="calcPID(false)">
+      <span class="pid-icon" id="pid_i1">🐇↑</span>
+      <select id="pid_gain_mode" class="unit-select" onchange="togglePIDGainMode()">
+        <option value="kc">Kc</option>
+        <option value="pb">PB %</option>
+      </select>
     </div>
     <div class="row">
-      <label id="pid_l2">τᵢ (min)</label>
+      <label id="pid_l2">τᵢ (min/rep)</label>
       <input type="number" id="pid_p2" value="4.44" step="0.01" oninput="calcPID(false)">
+      <span class="pid-icon" id="pid_i2">🐢↑</span>
+      <select id="pid_ti_mode" class="unit-select" onchange="togglePIDTiMode()">
+        <option value="mpr">min/repeat</option>
+        <option value="rpm">repeats/min</option>
+      </select>
     </div>
     <div class="row">
       <label id="pid_l3">τ_d (min)</label>
       <input type="number" id="pid_p3" value="0.0625" step="0.001" oninput="calcPID(false)">
+      <span class="pid-icon">🐇↑</span>
     </div>
+    <div style="font-size:0.7rem;color:#8e8e93;margin-top:8px;text-align:center">🐇↑ = bigger is faster &nbsp; 🐢↑ = bigger is slower</div>
   </div>
   <div class="card">
     <h2 id="pid_output_title">Independent (Parallel) — Per Second</h2>
@@ -767,6 +785,38 @@ function calcConvert() {
 }
 
 // ── PID Tuning Conversion ─────────────────────────────────────────────────
+function togglePIDGainMode() {
+  const mode = document.getElementById('pid_gain_mode').value;
+  const input = document.getElementById('pid_p1');
+  const val = parseFloat(input.value) || 0;
+  if (mode === 'pb') {
+    document.getElementById('pid_l1').textContent = 'PB %';
+    document.getElementById('pid_i1').textContent = '🐢↑';
+    input.value = val !== 0 ? (100 / val).toFixed(2) : '0';
+  } else {
+    document.getElementById('pid_l1').textContent = 'Kc';
+    document.getElementById('pid_i1').textContent = '🐇↑';
+    input.value = val !== 0 ? (100 / val).toFixed(2) : '0';
+  }
+  calcPID(false);
+}
+
+function togglePIDTiMode() {
+  const mode = document.getElementById('pid_ti_mode').value;
+  const input = document.getElementById('pid_p2');
+  const val = parseFloat(input.value) || 0;
+  if (mode === 'rpm') {
+    document.getElementById('pid_l2').textContent = 'Repeats/min';
+    document.getElementById('pid_i2').textContent = '🐇↑';
+    input.value = val !== 0 ? (1 / val).toFixed(4) : '0';
+  } else {
+    document.getElementById('pid_l2').textContent = 'τᵢ (min/rep)';
+    document.getElementById('pid_i2').textContent = '🐢↑';
+    input.value = val !== 0 ? (1 / val).toFixed(4) : '0';
+  }
+  calcPID(false);
+}
+
 function calcPID(swapped) {
   const dir = document.getElementById('pid_dir').value;
   const v1 = parseFloat(document.getElementById('pid_p1').value) || 0;
@@ -778,30 +828,39 @@ function calcPID(swapped) {
   if (dir === 'coupled') {
     document.getElementById('pid_input_title').textContent = 'Coupled (ISA) Input';
     document.getElementById('pid_output_title').textContent = 'Independent (Parallel) — Per Second';
-    document.getElementById('pid_l1').textContent = 'Kc';
-    document.getElementById('pid_l2').textContent = 'τᵢ (min)';
+    document.getElementById('pid_gain_mode').style.display = '';
+    document.getElementById('pid_ti_mode').style.display = '';
+    const gainMode = document.getElementById('pid_gain_mode').value;
+    const tiMode = document.getElementById('pid_ti_mode').value;
+    document.getElementById('pid_l1').textContent = gainMode === 'pb' ? 'PB %' : 'Kc';
+    document.getElementById('pid_l2').textContent = tiMode === 'rpm' ? 'Repeats/min' : 'τᵢ (min/rep)';
     document.getElementById('pid_l3').textContent = 'τ_d (min)';
     if (swapped) {
       kp = v1; ki = v2; kd = v3;
       kc = kp;
       ti = (ki > 0) ? kp / ki / 60 : 0;
       td = (kp > 0) ? kd / kp / 60 : 0;
-      document.getElementById('pid_p1').value = kc.toFixed(2);
-      document.getElementById('pid_p2').value = ti.toFixed(3);
+      document.getElementById('pid_p1').value = gainMode === 'pb' ? (100/kc).toFixed(2) : kc.toFixed(2);
+      document.getElementById('pid_p2').value = tiMode === 'rpm' ? (ti > 0 ? (1/ti).toFixed(4) : '0') : ti.toFixed(3);
       document.getElementById('pid_p3').value = td.toFixed(4);
       return calcPID(false);
     }
-    kc = v1; ti = v2; td = v3;
+    kc = gainMode === 'pb' ? (v1 > 0 ? 100 / v1 : 0) : v1;
+    ti = tiMode === 'rpm' ? (v2 > 0 ? 1 / v2 : 0) : v2;
+    td = v3;
     kp = kc;
     ki = (ti > 0) ? kc / ti / 60 : 0;
     kd = kc * td * 60;
     document.getElementById('pid_results').innerHTML =
       `<div class="result-box highlight"><div class="val">${kp.toFixed(2)}</div><div class="unit">Kp</div></div>
        <div class="result-box highlight"><div class="val">${ki.toFixed(4)}</div><div class="unit">Ki (resets/sec)</div></div>
+       <div class="result-box highlight"><div class="val">${(ki*60).toFixed(2)}</div><div class="unit">Ki (repeats/min)</div></div>
        <div class="result-box highlight"><div class="val">${kd.toFixed(2)}</div><div class="unit">Kd (sec)</div></div>`;
   } else {
     document.getElementById('pid_input_title').textContent = 'Independent (Parallel) Input';
     document.getElementById('pid_output_title').textContent = 'Coupled (ISA) — Per Minute';
+    document.getElementById('pid_gain_mode').style.display = 'none';
+    document.getElementById('pid_ti_mode').style.display = 'none';
     document.getElementById('pid_l1').textContent = 'Kp';
     document.getElementById('pid_l2').textContent = 'Ki (resets/sec)';
     document.getElementById('pid_l3').textContent = 'Kd (sec)';
