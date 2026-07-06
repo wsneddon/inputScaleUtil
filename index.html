@@ -201,8 +201,12 @@
     <h2>Convert From</h2>
     <div class="row">
       <select id="pid_dir" style="flex:1" onchange="calcPID(true)">
-        <option value="coupled">Coupled (ISA) — Per Minute</option>
-        <option value="independent">Independent (Parallel) — Per Second</option>
+        <option value="coupled">Coupled (ISA)</option>
+        <option value="independent">Independent (Parallel)</option>
+      </select>
+      <select id="pid_from_time_unit" class="unit-select" onchange="onPIDFromTimeUnitChange()">
+        <option value="min">Per Minute</option>
+        <option value="sec">Per Second</option>
       </select>
     </div>
   </div>
@@ -235,6 +239,13 @@
   </div>
   <div class="card">
     <h2 id="pid_output_title">Independent (Parallel) — Per Second</h2>
+    <div class="row">
+      <label>Convert To:</label>
+      <select id="pid_to_time_unit" class="unit-select" onchange="calcPID(false)">
+        <option value="min">Per Minute</option>
+        <option value="sec">Per Second</option>
+      </select>
+    </div>
     <div class="result-grid" id="pid_results"></div>
   </div>
   <div class="card">
@@ -596,6 +607,9 @@ function onTypeChange() {
 
   if (isPID) {
     showTab('pid');
+    // Set default time units: Coupled defaults to min→sec, Independent defaults to sec→min
+    document.getElementById('pid_from_time_unit').value = 'min';
+    document.getElementById('pid_to_time_unit').value = 'sec';
     calcPID(false);
     return;
   }
@@ -817,75 +831,146 @@ function togglePIDTiMode() {
   calcPID(false);
 }
 
+function onPIDFromTimeUnitChange() {
+  // Set default "to" time unit to opposite of "from" to maintain current behavior
+  const fromUnit = document.getElementById('pid_from_time_unit').value;
+  const toSelect = document.getElementById('pid_to_time_unit');
+  const dir = document.getElementById('pid_dir').value;
+  
+  // Keep the default behavior: coupled defaults to min→sec, independent defaults to sec→min
+  if (dir === 'coupled') {
+    toSelect.value = fromUnit === 'min' ? 'sec' : 'min';
+  } else {
+    toSelect.value = fromUnit === 'sec' ? 'min' : 'sec';
+  }
+  
+  calcPID(false);
+}
+
 function calcPID(swapped) {
   const dir = document.getElementById('pid_dir').value;
+  const fromTimeUnit = document.getElementById('pid_from_time_unit').value;
+  const toTimeUnit = document.getElementById('pid_to_time_unit').value;
   const v1 = parseFloat(document.getElementById('pid_p1').value) || 0;
   const v2 = parseFloat(document.getElementById('pid_p2').value) || 0;
   const v3 = parseFloat(document.getElementById('pid_p3').value) || 0;
 
   let kp, ki, kd, kc, ti, td;
 
+  // Update titles based on selected time units
+  const fromSuffix = fromTimeUnit === 'min' ? 'Per Minute' : 'Per Second';
+  const toSuffix = toTimeUnit === 'min' ? 'Per Minute' : 'Per Second';
+  
   if (dir === 'coupled') {
-    document.getElementById('pid_input_title').textContent = 'Coupled (ISA) Input';
-    document.getElementById('pid_output_title').textContent = 'Independent (Parallel) — Per Second';
+    document.getElementById('pid_input_title').textContent = `Coupled (ISA) — ${fromSuffix}`;
+    document.getElementById('pid_output_title').textContent = `Independent (Parallel) — ${toSuffix}`;
     document.getElementById('pid_gain_mode').style.display = '';
     document.getElementById('pid_ti_mode').style.display = '';
     const gainMode = document.getElementById('pid_gain_mode').value;
     const tiMode = document.getElementById('pid_ti_mode').value;
     document.getElementById('pid_l1').textContent = gainMode === 'pb' ? 'PB %' : 'Kc';
-    document.getElementById('pid_l2').textContent = tiMode === 'rpm' ? 'Repeats/min' : 'τᵢ (min/rep)';
-    document.getElementById('pid_l3').textContent = 'τ_d (min)';
+    document.getElementById('pid_l2').textContent = tiMode === 'rpm' ? `Repeats/${fromTimeUnit}` : `τᵢ (${fromTimeUnit}/rep)`;
+    document.getElementById('pid_l3').textContent = `τ_d (${fromTimeUnit})`;
+    
     if (swapped) {
       kp = v1; ki = v2; kd = v3;
       kc = kp;
-      ti = (ki > 0) ? kp / ki / 60 : 0;
-      td = (kp > 0) ? kd / kp / 60 : 0;
+      // Convert ki from per-second to per-fromTimeUnit for ti calculation
+      const kiAdjusted = toTimeUnit === 'sec' ? ki : ki / 60;
+      ti = (kiAdjusted > 0) ? kp / kiAdjusted : 0;
+      if (fromTimeUnit === 'sec') ti = ti / 60; // Convert ti to seconds if needed
+      td = (kp > 0) ? kd / kp : 0;
+      if (toTimeUnit === 'sec') td = td / 60; // Convert td to seconds if needed
+      
       document.getElementById('pid_p1').value = gainMode === 'pb' ? (100/kc).toFixed(2) : kc.toFixed(2);
       document.getElementById('pid_p2').value = tiMode === 'rpm' ? (ti > 0 ? (1/ti).toFixed(4) : '0') : ti.toFixed(3);
       document.getElementById('pid_p3').value = td.toFixed(4);
       return calcPID(false);
     }
+    
     kc = gainMode === 'pb' ? (v1 > 0 ? 100 / v1 : 0) : v1;
     ti = tiMode === 'rpm' ? (v2 > 0 ? 1 / v2 : 0) : v2;
     td = v3;
     kp = kc;
-    ki = (ti > 0) ? kc / ti / 60 : 0;
-    kd = kc * td * 60;
+    
+    // Convert ti and td from input units to standard (minutes), then to output units
+    const tiInMin = fromTimeUnit === 'sec' ? ti * 60 : ti;
+    const tdInMin = fromTimeUnit === 'sec' ? td * 60 : td;
+    
+    ki = (tiInMin > 0) ? kc / tiInMin : 0;
+    kd = kc * tdInMin;
+    
+    // Convert ki and kd to output time units
+    if (toTimeUnit === 'sec') {
+      ki = ki / 60; // Convert to per-second
+      kd = kd * 60; // Convert to seconds
+    }
+    
+    const kiLabel = toTimeUnit === 'sec' ? 'resets/sec' : 'repeats/min';
+    const kdLabel = toTimeUnit === 'sec' ? 'sec' : 'min';
+    
     document.getElementById('pid_results').innerHTML =
       `<div class="result-box highlight"><div class="val">${kp.toFixed(2)}</div><div class="unit">Kp</div></div>
-       <div class="result-box highlight"><div class="val">${ki.toFixed(4)}</div><div class="unit">Ki (resets/sec)</div></div>
-       <div class="result-box highlight"><div class="val">${(ki*60).toFixed(2)}</div><div class="unit">Ki (repeats/min)</div></div>
-       <div class="result-box highlight"><div class="val">${kd.toFixed(2)}</div><div class="unit">Kd (sec)</div></div>`;
+       <div class="result-box highlight"><div class="val">${ki.toFixed(4)}</div><div class="unit">Ki (${kiLabel})</div></div>
+       <div class="result-box highlight"><div class="val">${kd.toFixed(2)}</div><div class="unit">Kd (${kdLabel})</div></div>`;
   } else {
-    document.getElementById('pid_input_title').textContent = 'Independent (Parallel) Input';
-    document.getElementById('pid_output_title').textContent = 'Coupled (ISA) — Per Minute';
+    document.getElementById('pid_input_title').textContent = `Independent (Parallel) — ${fromSuffix}`;
+    document.getElementById('pid_output_title').textContent = `Coupled (ISA) — ${toSuffix}`;
     document.getElementById('pid_gain_mode').style.display = 'none';
     document.getElementById('pid_ti_mode').style.display = 'none';
     document.getElementById('pid_l1').textContent = 'Kp';
-    document.getElementById('pid_l2').textContent = 'Ki (resets/sec)';
-    document.getElementById('pid_l3').textContent = 'Kd (sec)';
+    document.getElementById('pid_l2').textContent = fromTimeUnit === 'sec' ? 'Ki (resets/sec)' : 'Ki (repeats/min)';
+    document.getElementById('pid_l3').textContent = fromTimeUnit === 'sec' ? 'Kd (sec)' : 'Kd (min)';
+    
     if (swapped) {
       kc = v1; ti = v2; td = v3;
       kp = kc;
-      ki = (ti > 0) ? kc / ti / 60 : 0;
-      kd = kc * td * 60;
+      
+      // Convert from minutes to appropriate units
+      const tiConverted = toTimeUnit === 'sec' ? ti / 60 : ti;
+      const tdConverted = toTimeUnit === 'sec' ? td * 60 : td;
+      
+      ki = (tiConverted > 0) ? kp / tiConverted : 0;
+      kd = kp * tdConverted;
+      
+      // Convert ki to input time units
+      if (fromTimeUnit === 'min') ki = ki * 60;
+      
       document.getElementById('pid_p1').value = kp.toFixed(2);
       document.getElementById('pid_p2').value = ki.toFixed(4);
       document.getElementById('pid_p3').value = kd.toFixed(2);
       return calcPID(false);
     }
+    
     kp = v1; ki = v2; kd = v3;
     kc = kp;
-    ti = (ki > 0) ? kp / ki / 60 : 0;
-    td = (kp > 0) ? kd / kp / 60 : 0;
+    
+    // Convert ki and kd from input units to minutes, then to output units
+    const kiInPerMin = fromTimeUnit === 'sec' ? ki * 60 : ki;
+    const kdInMin = fromTimeUnit === 'sec' ? kd / 60 : kd;
+    
+    ti = (kiInPerMin > 0) ? kp / kiInPerMin : 0;
+    td = (kp > 0) ? kdInMin / kp : 0;
+    
+    // Convert to output time units
+    if (toTimeUnit === 'sec') {
+      ti = ti / 60;
+      td = td * 60;
+    }
+    
+    const tiLabel = toTimeUnit === 'sec' ? 'τᵢ (sec/repeat)' : 'τᵢ (min/repeat)';
+    const tdLabel = toTimeUnit === 'sec' ? 'τ_d (sec)' : 'τ_d (min)';
+    
     document.getElementById('pid_results').innerHTML =
       `<div class="result-box highlight"><div class="val">${kc.toFixed(2)}</div><div class="unit">Kc</div></div>
-       <div class="result-box highlight"><div class="val">${ti.toFixed(3)}</div><div class="unit">τᵢ (min/repeat)</div></div>
-       <div class="result-box highlight"><div class="val">${td.toFixed(4)}</div><div class="unit">τ_d (min)</div></div>`;
+       <div class="result-box highlight"><div class="val">${ti.toFixed(3)}</div><div class="unit">${tiLabel}</div></div>
+       <div class="result-box highlight"><div class="val">${td.toFixed(4)}</div><div class="unit">${tdLabel}</div></div>`;
   }
 
-  const rpmRate = ki * 60;
-  const tdSec = td * 60;
+  // Calculate interpretation values
+  const rpmRate = fromTimeUnit === 'sec' ? ki * 60 : ki;
+  const tdSec = fromTimeUnit === 'sec' ? (dir === 'independent' ? kd : td) : (dir === 'independent' ? kd * 60 : td * 60);
+  
   document.getElementById('pid_interp').innerHTML =
     `<div class="result-box"><div class="val">${kp.toFixed(1)}%</div><div class="unit">Output per 1° error</div></div>
      <div class="result-box"><div class="val">${rpmRate.toFixed(2)}</div><div class="unit">Repeats/min</div></div>
