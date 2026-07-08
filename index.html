@@ -69,6 +69,7 @@
 <body>
 
 <h1>Controls Conversion Tool</h1>
+<p style="text-align:center;font-size:0.8rem;color:#8e8e93;margin-bottom:14px;">4-20mA signal scaling, reverse lookup, and unit conversion</p>
 
 <!-- Global measurement type selector -->
 <div class="type-row">
@@ -649,7 +650,7 @@ function calcIPInfo() {
   resultsEl.innerHTML =
     `<div class="result-box"><div class="val">${intToIP(networkInt)}</div><div class="unit">Network</div></div>
      <div class="result-box"><div class="val">${intToIP(broadcastInt)}</div><div class="unit">Broadcast</div></div>
-     <div class="result-box highlight"><div class="val">/${prefix}</div><div class="unit">Prefix Length</div></div>
+     <div class="result-box highlight"><div class="val">${prefix}</div><div class="unit">Prefix Length</div></div>
      <div class="result-box"><div class="val">${netmaskIP}</div><div class="unit">Netmask</div></div>
      <div class="result-box"><div class="val">${intToIP(firstHostInt)}</div><div class="unit">First Host</div></div>
      <div class="result-box"><div class="val">${intToIP(lastHostInt)}</div><div class="unit">Last Host</div></div>
