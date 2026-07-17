@@ -139,6 +139,7 @@
     <option value="pressure">Pressure</option>
     <option value="flow">Flow</option>
     <option value="humidity">Humidity</option>
+    <option value="temperature">Temperature</option>
     <option value="pid">PID Tuning</option>
     <option value="ipinfo">IP Info</option>
   </select>
@@ -150,6 +151,7 @@
   <div class="tab" onclick="showTab('convert')">Convert</div>
   <div class="tab" style="display:none" onclick="showTab('pid')">PID Tuning</div>
   <div class="tab" style="display:none" onclick="showTab('ipinfo')">IP Info</div>
+  <div class="tab" style="display:none" onclick="showTab('temperature')">Temperature</div>
 </div>
 
 <!-- ── SCALER: mA → value ── -->
@@ -352,6 +354,52 @@
   <div class="card">
     <h2>Results</h2>
     <div class="result-grid" id="h_results"></div>
+  </div>
+</div>
+
+<!-- ── TEMPERATURE: RTD/Thermistor calculator ── -->
+<div id="temperature" class="section">
+  <div class="card">
+    <h2>Sensor Type</h2>
+    <div class="row">
+      <label>Sensor</label>
+      <select id="temp_sensor_type" class="unit-select" style="flex:1" onchange="calcTemperature()">
+        <option value="pt100">100Ω Platinum RTD (Pt100)</option>
+        <option value="pt1000">1000Ω Platinum RTD (Pt1000)</option>
+        <option value="10k_type2">10kΩ Type 2 Thermistor</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Input</h2>
+    <div class="row">
+      <label>Mode</label>
+      <select id="temp_mode" class="unit-select" style="flex:1" onchange="onTempModeChange()">
+        <option value="r_to_t">Resistance → Temperature</option>
+        <option value="t_to_r">Temperature → Resistance</option>
+      </select>
+    </div>
+    <div class="row" id="temp_input_row_r">
+      <label>Resistance</label>
+      <input type="number" id="temp_r_input" value="138.51" step="0.01" oninput="calcTemperature()">
+      <span style="min-width:40px;font-size:0.85rem;color:var(--text-secondary);padding-left:6px">Ω</span>
+    </div>
+    <div class="row" id="temp_input_row_t" style="display:none">
+      <label>Temp</label>
+      <input type="number" id="temp_t_input" value="100" step="0.1" oninput="calcTemperature()">
+      <select id="temp_input_unit" class="unit-select" onchange="calcTemperature()">
+        <option value="c">°C</option>
+        <option value="f">°F</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Results</h2>
+    <div class="result-grid" id="temp_results"></div>
+  </div>
+  <div class="card">
+    <h2>Sensor Info</h2>
+    <div id="temp_info" style="font-size:0.8rem;color:var(--text-secondary);line-height:1.5"></div>
   </div>
 </div>
 
@@ -800,6 +848,7 @@ function onTypeChange() {
   const isHumidity = type === 'humidity';
   const isPID = type === 'pid';
   const isIPInfo = type === 'ipinfo';
+  const isTemp = type === 'temperature';
 
   // Hide/show tabs based on type
   document.querySelectorAll('.tab').forEach(t => {
@@ -810,10 +859,18 @@ function onTypeChange() {
       t.style.display = tabName === 'pid tuning' ? '' : 'none';
     } else if (isIPInfo) {
       t.style.display = tabName === 'ip info' ? '' : 'none';
+    } else if (isTemp) {
+      t.style.display = tabName === 'temperature' ? '' : 'none';
     } else {
-      t.style.display = (tabName === 'humidity' || tabName === 'pid tuning' || tabName === 'ip info') ? 'none' : '';
+      t.style.display = (tabName === 'humidity' || tabName === 'pid tuning' || tabName === 'ip info' || tabName === 'temperature') ? 'none' : '';
     }
   });
+
+  if (isTemp) {
+    showTab('temperature');
+    calcTemperature();
+    return;
+  }
 
   if (isIPInfo) {
     showTab('ipinfo');
@@ -838,10 +895,10 @@ function onTypeChange() {
 
   const { rangeUnits, allUnits, labels } = units();
 
-  // Ensure a valid tab is visible (may have been on PID/IP/Humidity before)
+  // Ensure a valid tab is visible (may have been on PID/IP/Humidity/Temperature before)
   const activeSection = document.querySelector('.section.active');
   if (!activeSection || activeSection.style.display === 'none' ||
-      ['pid','ipinfo','humidity'].includes(activeSection.id)) {
+      ['pid','ipinfo','humidity','temperature'].includes(activeSection.id)) {
     showTab('scaler');
   }
 
@@ -1204,6 +1261,161 @@ function calcPID(swapped) {
      <div class="result-box"><div class="val">${rpmRate.toFixed(2)}</div><div class="unit">Repeats/min</div></div>
      <div class="result-box"><div class="val">${tdSec.toFixed(2)} s</div><div class="unit">Derivative horizon</div></div>
      <div class="result-box"><div class="val">${(rpmRate * kp).toFixed(1)}%/min</div><div class="unit">I accum at 1° error</div></div>`;
+}
+
+// ── Temperature Sensor Calculations ──────────────────────────────────────
+// Extensible registry: add new sensor types here (e.g., thermocouples later)
+const TEMP_SENSORS = {
+  pt100: {
+    name: 'Pt100 RTD',
+    R0: 100,
+    type: 'rtd',
+    info: 'Platinum RTD, R₀=100Ω @ 0°C. IEC 60751 Callendar-Van Dusen equation.<br>Range: -200°C to 850°C. α=3.9083×10⁻³, β=-5.775×10⁻⁷'
+  },
+  pt1000: {
+    name: 'Pt1000 RTD',
+    R0: 1000,
+    type: 'rtd',
+    info: 'Platinum RTD, R₀=1000Ω @ 0°C. IEC 60751 Callendar-Van Dusen equation.<br>Range: -200°C to 600°C. α=3.9083×10⁻³, β=-5.775×10⁻⁷'
+  },
+  '10k_type2': {
+    name: '10kΩ Type 2 Thermistor',
+    R0: 10000,
+    T0: 298.15,  // 25°C in Kelvin
+    beta: 3977,
+    type: 'ntc',
+    info: '10kΩ NTC Type 2 Thermistor (β=3977K).<br>R₀=10,000Ω @ 25°C. Steinhart-Hart Beta model.<br>Typical range: -40°C to 150°C'
+  }
+  // Future: thermocouple types would go here with type:'tc'
+};
+
+// CVD constants (IEC 60751)
+const CVD_A = 3.9083e-3;
+const CVD_B = -5.775e-7;
+const CVD_C = -4.183e-12;
+
+// RTD: Temperature → Resistance (Callendar-Van Dusen)
+function rtdTempToRes(tC, R0) {
+  if (tC >= 0) {
+    return R0 * (1 + CVD_A * tC + CVD_B * tC * tC);
+  } else {
+    return R0 * (1 + CVD_A * tC + CVD_B * tC * tC + CVD_C * (tC - 100) * tC * tC * tC);
+  }
+}
+
+// RTD: Resistance → Temperature (quadratic solve for T≥0; iterative for T<0)
+function rtdResToTemp(R, R0) {
+  // First try the quadratic (valid for T ≥ 0°C)
+  const disc = CVD_A * CVD_A - 4 * CVD_B * (1 - R / R0);
+  if (disc < 0) return NaN;
+  const tC = (-CVD_A + Math.sqrt(disc)) / (2 * CVD_B);
+  
+  // If result is negative, use iterative Newton-Raphson with full CVD equation
+  if (tC < 0) {
+    let t = tC; // Start with quadratic estimate
+    for (let i = 0; i < 50; i++) {
+      const rCalc = rtdTempToRes(t, R0);
+      const err = rCalc - R;
+      if (Math.abs(err) < 0.0001) break;
+      // Numerical derivative
+      const dt = 0.001;
+      const dR = rtdTempToRes(t + dt, R0) - rCalc;
+      t = t - err / (dR / dt);
+    }
+    return t;
+  }
+  return tC;
+}
+
+// NTC Thermistor: Temperature → Resistance (Beta equation)
+function ntcTempToRes(tC, sensor) {
+  const tK = tC + 273.15;
+  return sensor.R0 * Math.exp(sensor.beta * (1 / tK - 1 / sensor.T0));
+}
+
+// NTC Thermistor: Resistance → Temperature (Beta equation)
+function ntcResToTemp(R, sensor) {
+  const tK = 1 / (1 / sensor.T0 + (1 / sensor.beta) * Math.log(R / sensor.R0));
+  return tK - 273.15;
+}
+
+function onTempModeChange() {
+  const mode = document.getElementById('temp_mode').value;
+  document.getElementById('temp_input_row_r').style.display = mode === 'r_to_t' ? '' : 'none';
+  document.getElementById('temp_input_row_t').style.display = mode === 't_to_r' ? '' : 'none';
+  
+  // Set sensible defaults based on sensor type
+  const sensorKey = document.getElementById('temp_sensor_type').value;
+  const sensor = TEMP_SENSORS[sensorKey];
+  if (mode === 'r_to_t') {
+    // Default resistance to R at 100°C
+    if (sensor.type === 'rtd') {
+      document.getElementById('temp_r_input').value = rtdTempToRes(100, sensor.R0).toFixed(2);
+    } else {
+      document.getElementById('temp_r_input').value = ntcTempToRes(25, sensor).toFixed(0);
+    }
+  } else {
+    document.getElementById('temp_t_input').value = '100';
+    document.getElementById('temp_input_unit').value = 'c';
+  }
+  calcTemperature();
+}
+
+function calcTemperature() {
+  const sensorKey = document.getElementById('temp_sensor_type').value;
+  const sensor = TEMP_SENSORS[sensorKey];
+  const mode = document.getElementById('temp_mode').value;
+  const resultsEl = document.getElementById('temp_results');
+  const infoEl = document.getElementById('temp_info');
+  
+  infoEl.innerHTML = sensor.info;
+  
+  if (mode === 'r_to_t') {
+    // Resistance → Temperature
+    const R = parseFloat(document.getElementById('temp_r_input').value);
+    if (isNaN(R) || R <= 0) { resultsEl.innerHTML = ''; return; }
+    
+    let tC;
+    if (sensor.type === 'rtd') {
+      tC = rtdResToTemp(R, sensor.R0);
+    } else {
+      tC = ntcResToTemp(R, sensor);
+    }
+    
+    if (isNaN(tC)) { resultsEl.innerHTML = ''; return; }
+    
+    const tF = tC * 9 / 5 + 32;
+    const tK = tC + 273.15;
+    
+    resultsEl.innerHTML =
+      `<div class="result-box highlight"><div class="val">${tC.toFixed(2)}</div><div class="unit">°C</div></div>
+       <div class="result-box highlight"><div class="val">${tF.toFixed(2)}</div><div class="unit">°F</div></div>
+       <div class="result-box"><div class="val">${tK.toFixed(2)}</div><div class="unit">K</div></div>
+       <div class="result-box"><div class="val">${R.toFixed(2)}</div><div class="unit">Ω (input)</div></div>`;
+  } else {
+    // Temperature → Resistance
+    let tInput = parseFloat(document.getElementById('temp_t_input').value);
+    const unit = document.getElementById('temp_input_unit').value;
+    if (isNaN(tInput)) { resultsEl.innerHTML = ''; return; }
+    
+    const tC = unit === 'f' ? (tInput - 32) * 5 / 9 : tInput;
+    const tF = unit === 'f' ? tInput : tC * 9 / 5 + 32;
+    
+    let R;
+    if (sensor.type === 'rtd') {
+      R = rtdTempToRes(tC, sensor.R0);
+    } else {
+      R = ntcTempToRes(tC, sensor);
+    }
+    
+    if (isNaN(R) || R <= 0) { resultsEl.innerHTML = ''; return; }
+    
+    resultsEl.innerHTML =
+      `<div class="result-box highlight"><div class="val">${R.toFixed(2)}</div><div class="unit">Ω</div></div>
+       <div class="result-box"><div class="val">${tC.toFixed(2)}</div><div class="unit">°C</div></div>
+       <div class="result-box"><div class="val">${tF.toFixed(2)}</div><div class="unit">°F</div></div>
+       <div class="result-box"><div class="val">${(tC + 273.15).toFixed(2)}</div><div class="unit">K</div></div>`;
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
