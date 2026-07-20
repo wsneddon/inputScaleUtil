@@ -363,7 +363,7 @@
     <h2>Sensor Type</h2>
     <div class="row">
       <label>Sensor</label>
-      <select id="temp_sensor_type" class="unit-select" style="flex:1" onchange="calcTemperature()">
+      <select id="temp_sensor_type" class="unit-select" style="flex:1" onchange="onTempSensorChange()">
         <option value="pt100">100Ω Platinum RTD (Pt100)</option>
         <option value="pt1000">1000Ω Platinum RTD (Pt1000)</option>
         <option value="10k_type2">10kΩ Type 2 Thermistor</option>
@@ -381,7 +381,7 @@
     </div>
     <div class="row" id="temp_input_row_r">
       <label>Resistance</label>
-      <input type="number" id="temp_r_input" value="138.51" step="0.01" oninput="calcTemperature()">
+      <input type="number" id="temp_r_input" value="100" step="0.01" oninput="calcTemperature()">
       <span style="min-width:40px;font-size:0.85rem;color:var(--text-secondary);padding-left:6px">Ω</span>
     </div>
     <div class="row" id="temp_input_row_t" style="display:none">
@@ -1339,6 +1339,17 @@ function ntcResToTemp(R, sensor) {
   return tK - 273.15;
 }
 
+function onTempSensorChange() {
+  const sensorKey = document.getElementById('temp_sensor_type').value;
+  const sensor = TEMP_SENSORS[sensorKey];
+  const mode = document.getElementById('temp_mode').value;
+  // Load default resistance (R0) for the selected sensor
+  if (mode === 'r_to_t') {
+    document.getElementById('temp_r_input').value = sensor.R0;
+  }
+  calcTemperature();
+}
+
 function onTempModeChange() {
   const mode = document.getElementById('temp_mode').value;
   document.getElementById('temp_input_row_r').style.display = mode === 'r_to_t' ? '' : 'none';
@@ -1348,12 +1359,8 @@ function onTempModeChange() {
   const sensorKey = document.getElementById('temp_sensor_type').value;
   const sensor = TEMP_SENSORS[sensorKey];
   if (mode === 'r_to_t') {
-    // Default resistance to R at 100°C
-    if (sensor.type === 'rtd') {
-      document.getElementById('temp_r_input').value = rtdTempToRes(100, sensor.R0).toFixed(2);
-    } else {
-      document.getElementById('temp_r_input').value = ntcTempToRes(25, sensor).toFixed(0);
-    }
+    // Preload nominal resistance: 100Ω, 1000Ω, or 10000Ω
+    document.getElementById('temp_r_input').value = sensor.R0;
   } else {
     document.getElementById('temp_t_input').value = '100';
     document.getElementById('temp_input_unit').value = 'c';
